@@ -31,7 +31,8 @@ from face_detect import FaceDetect
 from face_compare import FaceVerify
 
 # You can change this to any folder on your system
-ALLOWED_EXTENSIONS = {'png', 'jpg'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'mp4'}
+VIDEO_EXTENSIONS = {'mp4'}
 
 app = Flask(__name__)
 
@@ -42,6 +43,10 @@ verify_obj = FaceVerify()
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def is_video(filename):
+    return filename.rsplit('.', 1)[1].lower() in VIDEO_EXTENSIONS
 
 
 def transfer_response(message, status_code):
@@ -66,7 +71,7 @@ def verify(req, names):
             raise Exception('filename is empty')
 
         if not allowed_file(file.filename):
-            raise Exception('file should be jpg or png')
+            raise Exception('file extension should be {}'.format(ALLOWED_EXTENSIONS))
 
 
 @app.route('/')
@@ -77,10 +82,15 @@ def abc():
 @app.route('/face/detect', methods=['GET', 'POST'])
 def face_detect():
     try:
-        key_names = ['image']
+        key_names = ['file']
         verify(request, key_names)
 
-        send_obj = detect_obj.detect_faces_in_image(request.files[key_names[0]])
+        file_stream = request.files[key_names[0]]
+
+        if is_video(file_stream.filename):
+            send_obj = detect_obj.detect_faces_in_video(file_stream)
+        else:
+            send_obj = detect_obj.detect_faces_in_image(file_stream)
     except Exception as exp:
         return transfer_response(str(exp), 400)
 
@@ -90,7 +100,7 @@ def face_detect():
 @app.route('/face/verify', methods=['GET', 'POST'])
 def face_comapre():
     try:
-        key_names = ['image_1', 'image_2']
+        key_names = ['file_1', 'file_2']
         verify(request, key_names)
         image_files = [request.files[key] for key in key_names]
         json_obj = verify_obj.compare_face_in_image(detect_obj, image_files)
