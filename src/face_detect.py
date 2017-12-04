@@ -1,8 +1,4 @@
 import numpy as np
-import cv2
-import uuid
-import os
-import shutil
 from scipy import misc
 import tensorflow as tf
 from PIL import Image, ImageDraw
@@ -42,68 +38,6 @@ class FaceDetect:
 
         return bounding_boxes
 
-    def detect_faces_in_video(self, file_stream):
-        tmp_video_dir = '/tmp/face/{}'.format(uuid.uuid4())
-        if not os.path.isdir(tmp_video_dir):
-            os.makedirs(tmp_video_dir)
-
-        input_path = tmp_video_dir + '/input{}'.format(file_stream.filename)
-        output_path = tmp_video_dir + '/output{}'.format(file_stream.filename)
-        file_stream.save(input_path)
-        self.detect_faces_in_video_process(input_path, output_path)
-
-        with open(output_path, mode='rb') as f:
-            byte_io = BytesIO(f.read())
-
-        # byte_io.seek(0)
-
-        # shutil.rmtree(tmp_video_dir)
-
-        video_obj = send_file(byte_io, mimetype='audio/mp4')
-        return video_obj
-
-    def detect_faces_in_video_process(self, input_path, output_path):
-        # Open the input movie file
-        input_movie = cv2.VideoCapture(input_path)
-
-        frame_width = input_movie.get(cv2.CAP_PROP_FRAME_WIDTH)
-        frame_height = input_movie.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        fps = input_movie.get(cv2.CAP_PROP_FPS)
-
-        # Create an output movie file (make sure resolution/frame rate matches input video!)
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        output_movie = cv2.VideoWriter(output_path, fourcc, fps, (int(frame_width), int(frame_height)))
-
-        # Initialize some variables
-        frame_number = 0
-
-        while True:
-            # Grab a single frame of video
-            ret, frame = input_movie.read()
-            frame_number += 1
-
-            # Quit when the input video file ends
-            if not ret:
-                break
-
-            try:
-                face_locations = self.detect_faces_core(frame)
-            except Exception:
-                pass
-            else:
-                # Label the results
-                for left, top, right, bottom, _ in face_locations:
-                    # Draw a box around the face
-                    cv2.rectangle(frame, (int(left), int(top)), (int(right), int(bottom)), (0, 0, 255), 2)
-
-            # Write the resulting image to the output video file
-            print("Writing frame {}".format(frame_number))
-            output_movie.write(frame)
-
-        # All done!
-        input_movie.release()
-        output_movie.release()
-
     def detect_faces_in_image(self, file_stream):
         img_arr = misc.imread(file_stream, mode='RGB')
 
@@ -135,12 +69,20 @@ class FaceDetect:
         for i in range(nrof_samples):
             file_stream = file_streams[i]
             img_arr = misc.imread(file_stream, mode='RGB')
+            crop_img_arrs = self.crop_faces_in_image_item(img_arr, file_stream.filename)
 
-            bounding_boxes = self.detect_faces_core(img_arr, file_stream.filename)
+            img_list[i] = crop_img_arrs[0]
+        images = np.stack(img_list)
+        return images
 
-            img_size = np.asarray(img_arr.shape)[0:2]
+    def crop_faces_in_image_item(self, img_arr, filename=None, bounding_boxes=None):
+        if bounding_boxes is None:
+            bounding_boxes = self.detect_faces_core(img_arr, filename)
 
-            det = np.squeeze(bounding_boxes[0, 0:4])
+        img_size = np.asarray(img_arr.shape)[0:2]
+
+        crop_img_arrs = []
+        for det in bounding_boxes:
             bb = np.zeros(4, dtype=np.int32)
             bb[0] = np.maximum(det[0] - margin / 2, 0)
             bb[1] = np.maximum(det[1] - margin / 2, 0)
@@ -149,9 +91,8 @@ class FaceDetect:
             cropped = img_arr[bb[1]:bb[3], bb[0]:bb[2], :]
             aligned = misc.imresize(cropped, (image_size, image_size), interp='bilinear')
             prewhitened = prewhiten(aligned)
-            img_list[i] = prewhitened
-        images = np.stack(img_list)
-        return images
+            crop_img_arrs.append(prewhitened)
+        return crop_img_arrs
 
 
 def prewhiten(x):

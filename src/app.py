@@ -29,15 +29,17 @@ sys.path.append(os.path.dirname(__file__))
 from flask import Flask, json, request, Response, jsonify
 from face_detect import FaceDetect
 from face_compare import FaceVerify
+from face_video import FaceVideo
 
 # You can change this to any folder on your system
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'mp4'}
-VIDEO_EXTENSIONS = {'mp4'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'mp4', 'avi'}
+VIDEO_EXTENSIONS = {'mp4', 'avi'}
 
 app = Flask(__name__)
 
 detect_obj = FaceDetect()
 verify_obj = FaceVerify()
+detect_video_obj = FaceVideo(detect_obj, verify_obj)
 
 
 def allowed_file(filename):
@@ -88,7 +90,7 @@ def face_detect():
         file_stream = request.files[key_names[0]]
 
         if is_video(file_stream.filename):
-            send_obj = detect_obj.detect_faces_in_video(file_stream)
+            send_obj = detect_video_obj.detect_faces_in_video(file_stream)
         else:
             send_obj = detect_obj.detect_faces_in_image(file_stream)
     except Exception as exp:

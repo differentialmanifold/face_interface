@@ -11,6 +11,7 @@ thresholds = 1.2
 class FaceVerify:
     def __init__(self):
         self.inception_resnet_v1 = inception_resnet()
+        self.thresholds = thresholds
 
     def compare_face_in_image(self, detect_obj, image_files):
         images = detect_obj.crop_faces_in_image(image_files)
