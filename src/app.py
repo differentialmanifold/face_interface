@@ -1,26 +1,6 @@
 # This is a _very simple_ example of a web service that recognizes faces in uploaded images.
 # Upload an image file and it will check if the image contains a picture of face.
-# For example:
-#
-# $ curl -F "image=@/path/to/image.jpg" -o "/path/to/image1.jpg" http://127.0.0.1:5001/face/detect
-#
-# Return detected file to output position
-#
-# Upload two image file and check if these images contain same face.
-# For example:
-#
-# $ curl -F "image_1=@/path/to/image_1.jpg" -F "image_2=@/path/to/image_2.jpg" http://127.0.0.1:5001/face/verify
-#
-# Returns:
-#
-# {
-#   "distance": 0.5756304860115051,
-#   "issame": true,
-#   "thresholds": 1.2
-# }
-#
-# the smaller distance, the more similarity the two faces
-# 1.2 is the thresholds, smaller distance represents same face, and vice versa.
+
 import sys
 import os.path
 
@@ -38,7 +18,7 @@ VIDEO_EXTENSIONS = {'mp4', 'avi'}
 app = Flask(__name__)
 
 detect_obj = FaceDetect()
-verify_obj = FaceVerify()
+verify_obj = FaceVerify(detect_obj)
 detect_video_obj = FaceVideo(detect_obj, verify_obj)
 
 
@@ -51,8 +31,8 @@ def is_video(filename):
     return filename.rsplit('.', 1)[1].lower() in VIDEO_EXTENSIONS
 
 
-def transfer_response(message, status_code):
-    predict_results = json.dumps({'message': message}, ensure_ascii=False)
+def transfer_response(obj, status_code):
+    predict_results = json.dumps(obj, ensure_ascii=False)
     return Response(
         response=predict_results,
         mimetype="application/json; charset=UTF-8",
@@ -76,11 +56,6 @@ def verify(req, names):
             raise Exception('file extension should be {}'.format(ALLOWED_EXTENSIONS))
 
 
-@app.route('/')
-def abc():
-    return 'this is a test'
-
-
 @app.route('/face/detect', methods=['GET', 'POST'])
 def face_detect():
     try:
@@ -94,7 +69,7 @@ def face_detect():
         else:
             send_obj = detect_obj.detect_faces_in_image(file_stream)
     except Exception as exp:
-        return transfer_response(str(exp), 400)
+        return transfer_response({'message': str(exp)}, 400)
 
     return send_obj
 
@@ -105,12 +80,57 @@ def face_comapre():
         key_names = ['file_1', 'file_2']
         verify(request, key_names)
         image_files = [request.files[key] for key in key_names]
-        json_obj = verify_obj.compare_face_in_image(detect_obj, image_files)
+        json_obj = verify_obj.compare_face_in_image(image_files)
 
     except Exception as exp:
-        return transfer_response(str(exp), 400)
+        return transfer_response({'message': str(exp)}, 400)
 
     return jsonify(json_obj)
+
+
+@app.route('/face/verify/twofaces', methods=['GET', 'POST'])
+def face_compare_two_faces():
+    try:
+        key_names = ['file']
+        verify(request, key_names)
+        image_file = request.files[key_names[0]]
+        json_obj = verify_obj.compare_two_faces_in_image(image_file)
+    except Exception as exp:
+        import traceback
+        traceback.print_exc()
+        return transfer_response({'message': str(exp)}, 400)
+
+    return jsonify(json_obj)
+
+
+@app.route('/face/verify/video_image', methods=['GET', 'POST'])
+def face_compare_video_image():
+    try:
+        key_names = ['file_1', 'file_2']
+        verify(request, key_names)
+        files = [request.files[key] for key in key_names]
+        json_obj = detect_video_obj.compare_video_image_api(files[0], files[1])
+    except Exception as exp:
+        import traceback
+        traceback.print_exc()
+        return transfer_response({'message': str(exp)}, 400)
+
+    return jsonify(json_obj)
+
+
+@app.route('/face/verify/database/video', methods=['GET', 'POST'])
+def face_compare_vedio_in_database():
+    try:
+        key_names = ['file']
+        verify(request, key_names)
+        file = request.files[key_names[0]]
+        json_obj = detect_video_obj.detect_video_in_database_api(file)
+    except Exception as exp:
+        import traceback
+        traceback.print_exc()
+        return transfer_response({'message': str(exp)}, 400)
+
+    return transfer_response(json_obj, 200)
 
 
 if __name__ == "__main__":

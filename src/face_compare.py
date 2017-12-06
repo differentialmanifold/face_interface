@@ -3,18 +3,21 @@ import tensorflow as tf
 import re
 from tensorflow.python.platform import gfile
 import numpy as np
+import cv2
+from scipy import misc
 
 model_path = os.path.join(os.path.dirname(__file__), '../data/20170512-110547')
 thresholds = 1.2
 
 
 class FaceVerify:
-    def __init__(self):
+    def __init__(self, detect_obj=None):
         self.inception_resnet_v1 = inception_resnet()
         self.thresholds = thresholds
+        self.detect_obj = detect_obj
 
-    def compare_face_in_image(self, detect_obj, image_files):
-        images = detect_obj.crop_faces_in_image(image_files)
+    def compare_face_in_image(self, image_files):
+        images = self.detect_obj.crop_faces_in_image(image_files)
 
         emb = self.inception_resnet_v1(images)
 
@@ -26,6 +29,26 @@ class FaceVerify:
         dist = np.sqrt(np.sum(np.square(np.subtract(emb[0, :], emb[1, :])))).astype(np.float64)
 
         return {'issame': bool(dist < thresholds), 'distance': dist, 'thresholds': thresholds}
+
+    def compare_two_faces_in_image(self, file_stream):
+        img_arr = misc.imread(file_stream, mode='RGB')
+        crop_img_arrs = self.detect_obj.crop_faces_in_image_item(img_arr, file_stream.filename)
+
+        if len(crop_img_arrs) != 2:
+            raise Exception('Should contain two faces in one image')
+
+        embs = self.inception_resnet_v1(crop_img_arrs)
+
+        dist = np.linalg.norm(embs[0] - embs[1], axis=0).astype(np.float64)
+        issame = bool(dist < self.thresholds)
+
+        return {'issame': issame, 'distance': dist, 'thresholds': thresholds}
+
+    def transfer_image_to_vector(self, image_input):
+        frame = cv2.imread(image_input)
+        crop_frame = self.detect_obj.crop_faces_in_image_item(frame)
+        emb = self.inception_resnet_v1(crop_frame)[0]
+        return emb
 
 
 def inception_resnet():
