@@ -3,10 +3,10 @@
 
 import sys
 import os.path
+from flask import Flask, json, request, Response, jsonify
 
 sys.path.append(os.path.dirname(__file__))
 
-from flask import Flask, json, request, Response, jsonify
 from face_detect import FaceDetect
 from face_compare import FaceVerify
 from face_video import FaceVideo
@@ -134,4 +134,4 @@ def face_compare_vedio_in_database():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001)

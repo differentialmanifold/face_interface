@@ -1,4 +1,2 @@
-tensorflow
+flask
 scipy
-Pillow
-opencv-python
