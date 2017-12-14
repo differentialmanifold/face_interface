@@ -3,7 +3,7 @@
 
 import sys
 import os.path
-from flask import Flask, json, request, Response, jsonify
+from flask import Flask, json, request, Response
 
 sys.path.append(os.path.dirname(__file__))
 
