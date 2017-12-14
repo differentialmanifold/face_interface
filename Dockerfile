@@ -1,4 +1,4 @@
-FROM tensorflow-opencv-dlib
+FROM py3-tensorflow-opencv-dlib
 
 WORKDIR /app
 

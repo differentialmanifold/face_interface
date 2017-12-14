@@ -1,54 +1,47 @@
 import os
 import tensorflow as tf
 import re
+import cv2
 from tensorflow.python.platform import gfile
 import numpy as np
-import cv2
-from scipy import misc
+import face_detect
 
-model_path = os.path.join(os.path.dirname(__file__), '../data/20170512-110547')
+model_path = os.path.join(os.path.dirname(__file__), '../data/20170512-110547/20170512-110547.pb')
+known_images_dir = os.path.join(os.path.dirname(__file__), '../data/known_images')
 thresholds = 1.2
 
 
 class FaceVerify:
-    def __init__(self, detect_obj=None):
+    def __init__(self):
         self.inception_resnet_v1 = inception_resnet()
-        self.thresholds = thresholds
-        self.detect_obj = detect_obj
+        self.known_embs = self.load_known_images()
 
-    def compare_face_in_image(self, image_files):
-        images = self.detect_obj.crop_faces_in_image(image_files)
+    def load_known_images(self):
+        if not os.path.exists(known_images_dir):
+            os.makedirs(known_images_dir)
 
-        emb = self.inception_resnet_v1(images)
+        name_emb_tuples = []
+        for basename in os.listdir(known_images_dir):
+            name = basename.rsplit('.', maxsplit=1)[0]
+            image_path = os.path.join(known_images_dir, basename)
+            img_arr = face_detect.crop_face_in_image_largest(cv2.imread(image_path), basename)
 
-        nrof_images = len(image_files)
+            emb = self.inception_resnet_v1([img_arr])[0]
+            name_emb_tuples.append((name, emb))
+        return name_emb_tuples
 
-        if nrof_images != 2:
-            raise Exception('num of images should be 2')
+    def find_name_in_database(self, face_encoding):
+        names, embs = zip(*self.known_embs)
+        distances = face_distance_arr(np.array(embs), face_encoding)
 
-        dist = np.sqrt(np.sum(np.square(np.subtract(emb[0, :], emb[1, :])))).astype(np.float64)
+        min_index = np.argmin(distances)
 
-        return {'issame': bool(dist < thresholds), 'distance': dist, 'thresholds': thresholds}
+        print('name: {}, distance: {}'.format(names[min_index], distances[min_index]))
 
-    def compare_two_faces_in_image(self, file_stream):
-        img_arr = misc.imread(file_stream, mode='RGB')
-        crop_img_arrs = self.detect_obj.crop_faces_in_image_item(img_arr, file_stream.filename)
-
-        if len(crop_img_arrs) != 2:
-            raise Exception('Should contain two faces in one image')
-
-        embs = self.inception_resnet_v1(crop_img_arrs)
-
-        dist = np.linalg.norm(embs[0] - embs[1], axis=0).astype(np.float64)
-        issame = bool(dist < self.thresholds)
-
-        return {'issame': issame, 'distance': dist, 'thresholds': thresholds}
-
-    def transfer_image_to_vector(self, image_input):
-        frame = cv2.imread(image_input)
-        crop_frame = self.detect_obj.crop_faces_in_image_item(frame)
-        emb = self.inception_resnet_v1(crop_frame)[0]
-        return emb
+        face_name = None
+        if distances[min_index] < thresholds:
+            face_name = names[min_index]
+        return face_name
 
 
 def inception_resnet():
@@ -108,3 +101,92 @@ def get_model_filenames(model_dir):
                 max_step = step
                 ckpt_file = step_str.groups()[0]
     return meta_file, ckpt_file
+
+
+face_verify = FaceVerify()
+
+
+def trans_faces_to_embs(face_arrs):
+    embs = face_verify.inception_resnet_v1(face_arrs)
+    return embs
+
+
+def get_largest_face_embs(img_arrs):
+    crop_frames = [face_detect.crop_face_in_image_largest(image) for image in img_arrs]
+    embs = trans_faces_to_embs(crop_frames)
+    return embs
+
+
+def face_distance(encoding1, encoding2):
+    return np.linalg.norm(encoding1 - encoding2).astype(np.float64)
+
+
+def face_distance_arr(face_encodings, face_to_compare):
+    if len(face_encodings) == 0:
+        return np.empty(0)
+    return np.linalg.norm(face_encodings - face_to_compare, axis=1).astype(np.float64)
+
+
+def compare_face_in_image(img_arrs):
+    embs = get_largest_face_embs(img_arrs)
+
+    nrof_images = len(img_arrs)
+
+    if nrof_images != 2:
+        raise Exception('num of images should be 2')
+
+    dist = face_distance(embs[0], embs[1])
+
+    issame = bool(dist < thresholds)
+
+    similarity = max(0.0, 100 - (50 / thresholds ** 2) * float(dist) ** 2)
+
+    return {'issame': issame, 'similarity': similarity}
+
+
+def compare_two_faces_in_image(img_arr):
+    crop_img_arrs = face_detect.crop_face_in_image_all(img_arr)
+
+    if len(crop_img_arrs) != 2:
+        raise Exception('Should contain two faces in one image')
+
+    embs = trans_faces_to_embs(crop_img_arrs)
+
+    dist = face_distance(embs[0], embs[1])
+    issame = bool(dist < thresholds)
+
+    similarity = max(0.0, 100 - (50 / thresholds ** 2) * float(dist) ** 2)
+
+    return {'issame': issame, 'similarity': similarity}
+
+
+def trans_bounding_position(bounding_boxes, img_arr):
+    def _trim_css_to_bounds(css, image_shape):
+        return max(css[0], 0), max(css[1], 0), min(css[2], image_shape[1]), min(css[3], image_shape[0])
+
+    return [_trim_css_to_bounds(face, img_arr.shape) for face in bounding_boxes]
+
+
+def draw_for_image(img_arr, bounding_boxes, with_name=False):
+    # add name text
+    face_names = []
+    if with_name and len(face_verify.known_embs) > 0:
+        face_arrs = face_detect.crop_face_in_image_all(img_arr, bounding_boxes=bounding_boxes)
+        face_embs = trans_faces_to_embs(face_arrs)
+
+        for face_encoding in face_embs:
+            face_name = face_verify.find_name_in_database(face_encoding)
+
+            face_names.append(face_name)
+
+    face_locations = trans_bounding_position(bounding_boxes, img_arr)
+
+    for i, (left, top, right, bottom) in enumerate(face_locations):
+        # Draw a box around the face
+        cv2.rectangle(img_arr, (left, top), (right, bottom), (0, 255, 0))
+
+        if len(face_names) > 0:
+            font = cv2.FONT_HERSHEY_DUPLEX
+            cv2.putText(img_arr, face_names[i], (left + 6, bottom - 6), font, 0.5, (0, 255, 0))
+
+    return img_arr

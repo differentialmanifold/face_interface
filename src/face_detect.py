@@ -1,10 +1,9 @@
+import os
 import numpy as np
-from scipy import misc
 import tensorflow as tf
-from PIL import Image, ImageDraw
-from io import BytesIO
-from flask import send_file
+from scipy import misc
 import align.detect_face
+from face_exception import FaceException
 
 minsize = 20  # minimum size of face
 threshold = [0.6, 0.7, 0.7]  # three steps's threshold
@@ -30,69 +29,67 @@ class FaceDetect:
                 self.pnet, self.rnet, self.onet = align.detect_face.create_mtcnn(sess, None)
 
     def detect_faces_core(self, img_arr, img_name=''):
-
         bounding_boxes, _ = align.detect_face.detect_face(img_arr, minsize, self.pnet, self.rnet, self.onet, threshold,
                                                           factor)
         if len(bounding_boxes) == 0:
-            raise IndexError('Can not detect face from image {}'.format(img_name))
+            raise FaceException(FaceException.NO_FACE_ERR_CODE, 'Can not detect face from image {}'.format(img_name))
 
         return bounding_boxes
 
-    def detect_faces_in_image(self, file_stream):
-        img_arr = misc.imread(file_stream, mode='RGB')
 
-        bounding_boxes = self.detect_faces_core(img_arr, file_stream.filename)
+face_detect_obj = FaceDetect()
 
-        img = Image.fromarray(img_arr)
-        draw = ImageDraw.Draw(img)
 
-        img_size = np.asarray(img_arr.shape)[0:2]
-        for det in bounding_boxes:
-            bb = np.zeros(4, dtype=np.int32)
-            bb[0] = np.maximum(det[0], 0)
-            bb[1] = np.maximum(det[1], 0)
-            bb[2] = np.minimum(det[2], img_size[1])
-            bb[3] = np.minimum(det[3], img_size[0])
+def detect_faces_core(img_arr, img_name=''):
+    bounding_boxes = face_detect_obj.detect_faces_core(img_arr, img_name=img_name)
 
-            draw.rectangle(((bb[0], bb[1]), (bb[2], bb[3])), outline="red")
+    bounding_boxes = [(int(left), int(top), int(right), int(bottom)) for (left, top, right, bottom, _) in
+                      bounding_boxes]
 
-        byte_io = BytesIO()
+    return bounding_boxes
 
-        img.save(byte_io, 'PNG')
-        byte_io.seek(0)
 
-        return send_file(byte_io, mimetype='image/png')
+def find_largest_face(bounding_boxes):
+    bounding_box = max(bounding_boxes, key=lambda rect: (rect[2] - rect[0]) * (rect[3] - rect[1]))
+    return bounding_box
 
-    def crop_faces_in_image(self, file_streams):
-        nrof_samples = len(file_streams)
-        img_list = [None] * nrof_samples
-        for i in range(nrof_samples):
-            file_stream = file_streams[i]
-            img_arr = misc.imread(file_stream, mode='RGB')
-            crop_img_arrs = self.crop_faces_in_image_item(img_arr, file_stream.filename)
 
-            img_list[i] = crop_img_arrs[0]
-        images = np.stack(img_list)
-        return images
+def crop_face_in_image_all(img_arr, filename=None, bounding_boxes=None):
+    if bounding_boxes is None:
+        bounding_boxes = detect_faces_core(img_arr, filename)
 
-    def crop_faces_in_image_item(self, img_arr, filename=None, bounding_boxes=None):
-        if bounding_boxes is None:
-            bounding_boxes = self.detect_faces_core(img_arr, filename)
+    crop_img_arrs = []
+    for bb in bounding_boxes:
+        cropped = face_align(image_size, img_arr, bb)
+        crop_img_arrs.append(cropped)
 
-        img_size = np.asarray(img_arr.shape)[0:2]
+    return crop_img_arrs
 
-        crop_img_arrs = []
-        for det in bounding_boxes:
-            bb = np.zeros(4, dtype=np.int32)
-            bb[0] = np.maximum(det[0] - margin / 2, 0)
-            bb[1] = np.maximum(det[1] - margin / 2, 0)
-            bb[2] = np.minimum(det[2] + margin / 2, img_size[1])
-            bb[3] = np.minimum(det[3] + margin / 2, img_size[0])
-            cropped = img_arr[bb[1]:bb[3], bb[0]:bb[2], :]
-            aligned = misc.imresize(cropped, (image_size, image_size), interp='bilinear')
-            prewhitened = prewhiten(aligned)
-            crop_img_arrs.append(prewhitened)
-        return crop_img_arrs
+
+def crop_face_in_image_largest(img_arr, filename=None):
+    bounding_boxs = detect_faces_core(img_arr, filename)
+    max_bb = find_largest_face(bounding_boxs)
+
+    cropped = face_align(image_size, img_arr, max_bb)
+    return cropped
+
+
+def face_align(image_size, img_arr, bounding_box=None):
+    if bounding_box is None:
+        bounding_boxes = detect_faces_core(img_arr)
+        bounding_box = find_largest_face(bounding_boxes)
+
+    img_shape = np.asarray(img_arr.shape)[0:2]
+    bb = np.zeros(4, dtype=np.int32)
+    bb[0] = np.maximum(bounding_box[0] - margin / 2, 0)
+    bb[1] = np.maximum(bounding_box[1] - margin / 2, 0)
+    bb[2] = np.minimum(bounding_box[2] + margin / 2, img_shape[1])
+    bb[3] = np.minimum(bounding_box[3] + margin / 2, img_shape[0])
+    cropped = img_arr[bb[1]:bb[3], bb[0]:bb[2], :]
+    aligned = misc.imresize(cropped, (image_size, image_size), interp='bilinear')
+    prewhitened = prewhiten(aligned)
+
+    return prewhitened
 
 
 def prewhiten(x):
