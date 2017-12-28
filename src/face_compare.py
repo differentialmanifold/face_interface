@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import face_detect
 
+from face_exception import FaceException
+
 known_images_dir = os.path.join(os.path.dirname(__file__), '../data/known_images')
 thresholds = face_detect.thresholds
 
@@ -56,13 +58,13 @@ def face_distance_arr(face_encodings, face_to_compare):
     return np.linalg.norm(face_encodings - face_to_compare, axis=1).astype(np.float64)
 
 
-def compare_face_in_image(img_arrs):
+def compare_face_in_image(img_arrs, show_distance=False):
     embs = get_largest_face_embs(img_arrs)
 
     nrof_images = len(img_arrs)
 
     if nrof_images != 2:
-        raise Exception('num of images should be 2')
+        raise FaceException(FaceException.PARAMETER_NUM_ERR_CODE, 'num of images should be 2')
 
     dist = face_distance(embs[0], embs[1])
 
@@ -70,14 +72,19 @@ def compare_face_in_image(img_arrs):
 
     similarity = max(0.0, 100 - (50 / thresholds ** 2) * float(dist) ** 2)
 
-    return {'issame': issame, 'similarity': similarity}
+    result = {'issame': issame, 'similarity': similarity}
+
+    if show_distance:
+        result['dist'] = dist
+
+    return result
 
 
 def compare_two_faces_in_image(img_arr):
     embs = face_detect.get_face_emb_all(img_arr)
 
     if len(embs) != 2:
-        raise Exception('Should contain two faces in one image')
+        raise FaceException(FaceException.FACE_NUM_ERR_CODE, 'Should contain two faces in one image')
 
     dist = face_distance(embs[0], embs[1])
     issame = bool(dist < thresholds)

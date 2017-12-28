@@ -1,12 +1,15 @@
 from face_exception import FaceException
-# from algorithm.facenet_model import FacenetFaceRecognize
-#
-# face_recognize = FacenetFaceRecognize()
-# thresholds = 1.2
-from algorithm.dlib_model import DlibFaceRecognize
 
-face_recognize = DlibFaceRecognize()
-thresholds = 0.6
+from algorithm.facenet_model import FacenetFaceRecognize
+
+face_recognize = FacenetFaceRecognize()
+thresholds = 1.2
+
+
+# from algorithm.dlib_model import DlibFaceRecognize
+#
+# face_recognize = DlibFaceRecognize()
+# thresholds = 0.6
 
 
 def detect_faces_core(img_arr, img_name=''):

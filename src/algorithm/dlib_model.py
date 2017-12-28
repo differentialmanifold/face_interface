@@ -12,13 +12,14 @@ predictor_path5 = os.path.join(os.path.dirname(__file__), '../../data/dlib_model
 
 class DlibFaceRecognize:
     def __init__(self):
-        self.cnn_face_detector = dlib.cnn_face_detection_model_v1(cnn_path)
+        # self.face_detector = dlib.cnn_face_detection_model_v1(cnn_path)
+        self.face_detector = dlib.get_frontal_face_detector()
         self.facerec = dlib.face_recognition_model_v1(face_rec_model_path)
         self.predictor5 = dlib.shape_predictor(predictor_path5)
 
     def detect_face(self, img):
-        dets = self.cnn_face_detector(img, 1)
-        bounding_boxes = [(det.rect.left(), det.rect.top(), det.rect.right(), det.rect.bottom()) for det in dets]
+        dets = self.face_detector(img, 1)
+        bounding_boxes = [(det.left(), det.top(), det.right(), det.bottom()) for det in dets]
 
         return bounding_boxes
 

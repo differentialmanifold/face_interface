@@ -12,7 +12,7 @@ import face_video
 from face_exception import FaceException
 
 # You can change this to any folder on your system
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'mp4', 'avi'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'tif', 'mp4', 'avi'}
 VIDEO_EXTENSIONS = {'mp4', 'avi'}
 
 app = Flask(__name__)
